@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    @apply bg-ink-50 text-ink-900 antialiased dark:bg-ink-950 dark:text-ink-100;
+  }
+
+  ::selection {
+    @apply bg-brand-200 text-brand-950;
+  }
+
+  *:focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-offset-ink-950;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-ink-200/80 bg-white shadow-card dark:border-ink-800 dark:bg-ink-900;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/10 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100 dark:placeholder:text-ink-500;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-ink-50 px-2.5 py-1 text-xs font-medium text-ink-600 dark:border-ink-700 dark:bg-ink-800/60 dark:text-ink-300;
+  }
+
+  .prose-tight p {
+    @apply my-1.5 leading-relaxed;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}
+
+/* Rendered AI answers */
+.rich-text {
+  @apply text-sm leading-relaxed text-ink-700 dark:text-ink-200;
+}
+.rich-text strong {
+  @apply font-semibold text-ink-900 dark:text-white;
+}
+.rich-text em {
+  @apply italic text-ink-600 dark:text-ink-300;
+}
+.rich-text ul {
+  @apply my-2 space-y-1.5 pl-4;
+}
+.rich-text li {
+  @apply list-disc marker:text-brand-400;
+}
+.rich-text p {
+  @apply my-2;
+}
+.citation {
+  @apply ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded bg-brand-100 px-1 text-[10px] font-bold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300;
+}

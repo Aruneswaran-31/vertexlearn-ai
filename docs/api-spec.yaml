@@ -1,0 +1,1009 @@
+openapi: 3.0.3
+info:
+  title: VertexLearn AI API
+  version: 1.0.0
+  description: >
+    REST API for the VertexLearn AI learning platform. All routes are under /api/v1.
+    Authenticated routes require a bearer access token issued by /auth/login or /auth/refresh.
+servers:
+  - url: http://localhost:4000/api/v1
+    description: Local development
+tags:
+  - name: Auth
+  - name: Courses
+  - name: Learning
+  - name: Assignments
+  - name: Quizzes
+  - name: AI
+  - name: Gamification
+  - name: Discussions
+  - name: Admin
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+            field:
+              type: string
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        full_name: { type: string }
+        email: { type: string, format: email }
+        role:
+          type: string
+          enum: [student, instructor, admin]
+        avatar_url: { type: string, nullable: true }
+        headline: { type: string, nullable: true }
+        is_active: { type: boolean }
+        streak:
+          type: object
+          properties:
+            current: { type: integer }
+            longest: { type: integer }
+    Session:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer }
+        user: { $ref: '#/components/schemas/User' }
+    Course:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+        difficulty:
+          type: string
+          enum: [beginner, intermediate, advanced]
+        price: { type: number }
+        status:
+          type: string
+          enum: [pending, approved, rejected, archived]
+        instructor_name: { type: string }
+        learners: { type: integer }
+        modules: { type: integer }
+        lectures: { type: integer }
+        duration_minutes: { type: integer }
+        enrolled: { type: boolean }
+        progress_percent: { type: number }
+    Source:
+      type: object
+      properties:
+        lecture_id: { type: string }
+        lecture_title: { type: string }
+        timestamp_seconds: { type: integer }
+        excerpt: { type: string }
+        score: { type: number }
+    ChatMessage:
+      type: object
+      properties:
+        id: { type: string }
+        sender:
+          type: string
+          enum: [user, ai]
+        content: { type: string }
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/Source' }
+        created_at: { type: string, format: date-time }
+    QuizQuestion:
+      type: object
+      properties:
+        question_text: { type: string }
+        question_type:
+          type: string
+          enum: [mcq, multi_select, short_answer]
+        explanation: { type: string }
+        topic: { type: string }
+        expected_answer: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              option_text: { type: string }
+              is_correct: { type: boolean }
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid or expired access token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Authenticated but not allowed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource does not exist or is not visible
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Validation failure
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Auth]
+      security: []
+      summary: Liveness probe
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string }
+                  time: { type: string, format: date-time }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Register a student or instructor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName, email, password]
+              properties:
+                fullName: { type: string, minLength: 2 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                role:
+                  type: string
+                  enum: [student, instructor]
+                  default: student
+      responses:
+        '201':
+          description: Session issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { description: Email already registered }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Exchange credentials for tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Session issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Rotate a refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: New session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Revoke a refresh token
+      responses:
+        '200': { description: Revoked }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current profile with role and streak
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /courses:
+    get:
+      tags: [Courses]
+      security: []
+      summary: Public catalog with filters
+      parameters:
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: category, schema: { type: string } }
+        - { in: query, name: difficulty, schema: { type: string, enum: [beginner, intermediate, advanced] } }
+        - { in: query, name: sort, schema: { type: string, enum: [newest, popular, title] } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 12, maximum: 50 } }
+      responses:
+        '200':
+          description: Catalog page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  courses:
+                    type: array
+                    items: { $ref: '#/components/schemas/Course' }
+                  categories:
+                    type: array
+                    items: { type: string }
+                  pagination:
+                    type: object
+                    properties:
+                      page: { type: integer }
+                      limit: { type: integer }
+                      total: { type: integer }
+                      pages: { type: integer }
+    post:
+      tags: [Courses]
+      summary: Create a course (instructor/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, description, category, difficulty]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                category: { type: string }
+                difficulty: { type: string, enum: [beginner, intermediate, advanced] }
+                price: { type: number }
+                thumbnail_url: { type: string, format: uri }
+                outcomes:
+                  type: array
+                  items: { type: string }
+      responses:
+        '201': { description: Course created in pending status }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /courses/{id}:
+    get:
+      tags: [Courses]
+      summary: Course detail with modules, lectures, quizzes and announcements
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Course detail }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /courses/{id}/modules:
+    post:
+      tags: [Courses]
+      summary: Add a module (course owner)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                order_index: { type: integer }
+      responses:
+        '201': { description: Module created }
+
+  /modules/{id}/lectures:
+    post:
+      tags: [Courses]
+      summary: Add a lecture and index its transcript for the AI tutor
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                transcript: { type: string }
+                video_url: { type: string }
+                duration_seconds: { type: integer }
+                resource_urls:
+                  type: array
+                  items: { type: string }
+      responses:
+        '201':
+          description: Lecture created and transcript chunked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lecture:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      chunks_indexed: { type: integer }
+
+  /courses/{id}/approve:
+    post:
+      tags: [Courses]
+      summary: Approve or reject a course (admin)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approved, rejected] }
+                comment: { type: string }
+      responses:
+        '200': { description: Decision recorded }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /courses/{id}/analytics:
+    get:
+      tags: [Courses]
+      summary: Instructor analytics for a course
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Overview, lecture drop-off, quizzes, at-risk learners and topic mastery
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /courses/{id}/leaderboard:
+    get:
+      tags: [Courses]
+      summary: Course leaderboard by quiz average and progress
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Ranked learners }
+
+  /courses/{id}/enroll:
+    post:
+      tags: [Learning]
+      summary: Enroll the current student
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '201': { description: Enrollment created }
+        '200': { description: Already enrolled }
+
+  /enrollments/me:
+    get:
+      tags: [Learning]
+      summary: My enrollments, next lecture, due assignments and streak
+      responses:
+        '200': { description: Learner overview }
+
+  /lectures/{id}/progress:
+    post:
+      tags: [Learning]
+      summary: Upsert watched seconds and completion
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                watched_seconds: { type: integer }
+                completed: { type: boolean }
+      responses:
+        '200':
+          description: Recomputed course progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  progress_percent: { type: number }
+                  watched_seconds: { type: integer }
+                  completed: { type: boolean }
+
+  /lectures/{id}/notes:
+    get:
+      tags: [Learning]
+      summary: Notes and bookmarks for a lecture
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Lists }
+    post:
+      tags: [Learning]
+      summary: Add a timestamped note
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+                timestamp_seconds: { type: integer }
+      responses:
+        '201': { description: Note created }
+
+  /assignments:
+    post:
+      tags: [Assignments]
+      summary: Create an assignment (course owner)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [course_id, title, instructions, due_date]
+              properties:
+                course_id: { type: string }
+                title: { type: string }
+                instructions: { type: string }
+                due_date: { type: string, format: date-time }
+                rubric:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      criterion: { type: string }
+                      points: { type: number }
+      responses:
+        '201': { description: Assignment created and learners notified }
+
+  /assignments/{id}:
+    get:
+      tags: [Assignments]
+      summary: Assignment detail and my submission
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Assignment and submission }
+
+  /assignments/{id}/submit:
+    post:
+      tags: [Assignments]
+      summary: Submit text and/or a file URL
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content: { type: string }
+                file_url: { type: string }
+      responses:
+        '201': { description: Submitted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /assignments/{id}/submissions:
+    get:
+      tags: [Assignments]
+      summary: List submissions for grading (course owner)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Submissions with learner identity }
+
+  /submissions/{id}/grade:
+    put:
+      tags: [Assignments]
+      summary: Grade a submission
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grade]
+              properties:
+                grade: { type: number, minimum: 0, maximum: 100 }
+                feedback: { type: string }
+      responses:
+        '200': { description: Graded and learner notified }
+
+  /quizzes:
+    post:
+      tags: [Quizzes]
+      summary: Publish a quiz (manual or reviewed AI draft)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [module_id, title, questions]
+              properties:
+                module_id: { type: string }
+                title: { type: string }
+                is_ai_generated: { type: boolean }
+                generated_from_lecture_id: { type: string }
+                questions:
+                  type: array
+                  items: { $ref: '#/components/schemas/QuizQuestion' }
+      responses:
+        '201': { description: Quiz published }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /quizzes/{id}:
+    get:
+      tags: [Quizzes]
+      summary: Quiz for taking or instructor preview
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Questions without correct flags for learners }
+
+  /quizzes/{id}/attempt:
+    post:
+      tags: [Quizzes]
+      summary: Start an attempt
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '201':
+          description: Attempt created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attempt_id: { type: string }
+
+  /attempts/{id}/submit:
+    post:
+      tags: [Quizzes]
+      summary: Submit answers for instant auto-grading
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                answers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      question_id: { type: string }
+                      selected_option_ids:
+                        type: array
+                        items: { type: string }
+                      text_answer: { type: string }
+      responses:
+        '200':
+          description: Score and per-question review
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attempt:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      score: { type: number }
+                      graded_questions: { type: integer }
+                      total_questions: { type: integer }
+                  review:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        question_id: { type: string }
+                        is_correct: { type: boolean, nullable: true }
+                        feedback: { type: string }
+                        explanation: { type: string, nullable: true }
+                        correct_option_texts:
+                          type: array
+                          items: { type: string }
+
+  /ai/status:
+    get:
+      tags: [AI]
+      summary: Active AI engine, model and index size
+      responses:
+        '200': { description: Engine description }
+
+  /ai/chat/sessions:
+    post:
+      tags: [AI]
+      summary: Create or reopen a course-scoped tutor session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [course_id]
+              properties:
+                course_id: { type: string }
+                mode: { type: string, enum: [beginner, intermediate, advanced] }
+      responses:
+        '200': { description: Existing session with messages }
+        '201': { description: New session }
+
+  /ai/chat/sessions/{id}/messages:
+    post:
+      tags: [AI]
+      summary: Ask the grounded tutor (20 requests/minute/user)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+      responses:
+        '200':
+          description: Grounded reply with sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { $ref: '#/components/schemas/ChatMessage' }
+                  mode: { type: string }
+                  engine: { type: string, enum: [claude, local] }
+                  grounded: { type: boolean }
+        '429': { description: Chat rate limit reached }
+
+  /ai/chat/sessions/{id}/mode:
+    put:
+      tags: [AI]
+      summary: Switch explanation depth
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { type: string, enum: [beginner, intermediate, advanced] }
+      responses:
+        '200': { description: Mode updated }
+
+  /ai/lectures/{id}/summarize:
+    post:
+      tags: [AI]
+      summary: Summarize a lecture transcript
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Summary text and engine }
+
+  /ai/lectures/{id}/generate-quiz:
+    post:
+      tags: [AI]
+      summary: Generate a reviewed quiz draft (course owner)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                count: { type: integer, minimum: 3, maximum: 10, default: 6 }
+      responses:
+        '200': { description: Draft questions with exactly one correct option each }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /ai/modules/{id}/flashcards:
+    get:
+      tags: [AI]
+      summary: Cached flashcards for a module
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Flashcards }
+    post:
+      tags: [AI]
+      summary: Generate flashcards from module transcripts
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Generated cards }
+
+  /ai/study-plan:
+    post:
+      tags: [AI]
+      summary: Generate a personalised four-week plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [course_id]
+              properties:
+                course_id: { type: string }
+      responses:
+        '200': { description: Plan, weak topics and engine }
+
+  /ai/study-plan/{courseId}:
+    get:
+      tags: [AI]
+      summary: Latest saved plan and topic mastery
+      parameters:
+        - { in: path, name: courseId, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Plan and mastery }
+
+  /users/me/badges:
+    get:
+      tags: [Gamification]
+      summary: All badges with earned state
+      responses:
+        '200': { description: Badge list and earned count }
+
+  /users/me/streak:
+    get:
+      tags: [Gamification]
+      summary: Streak counters and 14-day activity
+      responses:
+        '200': { description: Streak data }
+
+  /recommendations/me:
+    get:
+      tags: [Gamification]
+      summary: Personalised course recommendations
+      responses:
+        '200': { description: Up to three scored recommendations with reasons }
+
+  /certificates/me:
+    get:
+      tags: [Gamification]
+      summary: My issued certificates
+      responses:
+        '200': { description: Certificates }
+
+  /certificates/{id}/download:
+    get:
+      tags: [Gamification]
+      summary: Download a certificate as PDF
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: PDF document
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /courses/{id}/threads:
+    get:
+      tags: [Discussions]
+      summary: List discussion threads for a course
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Threads }
+    post:
+      tags: [Discussions]
+      summary: Create a thread
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content]
+              properties:
+                title: { type: string }
+                content: { type: string }
+      responses:
+        '201': { description: Thread created }
+
+  /threads/{id}:
+    get:
+      tags: [Discussions]
+      summary: Thread with posts
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Thread and posts }
+
+  /threads/{id}/posts:
+    post:
+      tags: [Discussions]
+      summary: Reply to a thread
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        '201': { description: Post created }
+
+  /posts/{id}/flag:
+    post:
+      tags: [Discussions]
+      summary: Report a post for moderation
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Flagged }
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Search and page users
+      parameters:
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: role, schema: { type: string, enum: [student, instructor, admin] } }
+        - { in: query, name: page, schema: { type: integer } }
+      responses:
+        '200': { description: Users with pagination }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/users/{id}/role:
+    put:
+      tags: [Admin]
+      summary: Replace a user's role
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [student, instructor, admin] }
+      responses:
+        '200': { description: Role updated }
+
+  /admin/users/{id}/suspend:
+    put:
+      tags: [Admin]
+      summary: Suspend or restore an account
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_active]
+              properties:
+                is_active: { type: boolean }
+      responses:
+        '200': { description: Status updated }
+
+  /admin/courses/pending:
+    get:
+      tags: [Admin]
+      summary: Course approval queue and recent decisions
+      responses:
+        '200': { description: Pending courses }
+
+  /admin/analytics/overview:
+    get:
+      tags: [Admin]
+      summary: Platform-wide metrics
+      responses:
+        '200': { description: Users, courses, enrollments, AI usage, revenue and trends }
+
+  /admin/moderation/flagged-posts:
+    get:
+      tags: [Admin]
+      summary: Reported discussion posts
+      responses:
+        '200': { description: Flagged posts }
+
+  /admin/moderation/posts/{id}:
+    put:
+      tags: [Admin]
+      summary: Dismiss or remove a reported post
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [dismiss, remove] }
+      responses:
+        '200': { description: Moderation applied }
